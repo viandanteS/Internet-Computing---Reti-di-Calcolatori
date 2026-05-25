@@ -1,0 +1,61 @@
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.*;
+import java.util.Iterator;
+import java.util.Scanner;
+
+public class NioEchoClient {
+    public static void main(String[] args) throws IOException {
+        SocketChannel channel = SocketChannel.open();
+        channel.configureBlocking(false);
+        channel.connect(new InetSocketAddress("localhost", 5555));
+
+        Selector selector = Selector.open();
+        channel.register(selector, SelectionKey.OP_CONNECT | SelectionKey.OP_READ | SelectionKey.OP_WRITE);
+
+        Scanner scanner = new Scanner(System.in);
+        ByteBuffer buffer = ByteBuffer.allocate(1024);
+
+        while (true) {
+            selector.select(); // Blocca finché c'è un evento
+            Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
+
+            while (keys.hasNext()) {
+                SelectionKey key = keys.next();
+                keys.remove();
+
+                if (key.isConnectable()) {
+                    SocketChannel sc = (SocketChannel) key.channel();
+                    if (sc.isConnectionPending()) {
+                        sc.finishConnect();
+                        System.out.println("Connesso al server!");
+                    }
+                }
+
+                if (key.isReadable()) {
+                    SocketChannel sc = (SocketChannel) key.channel();
+                    buffer.clear();
+                    int read = sc.read(buffer);
+                    if (read == -1) {
+                        System.out.println("Connessione chiusa dal server.");
+                        sc.close();
+                        return;
+                    }
+                    buffer.flip();
+                    System.out.println("Server: " + new String(buffer.array(), 0, buffer.limit()));
+                }
+
+                if (key.isWritable()) {
+                    System.out.print("Tu: ");
+                    String msg = scanner.nextLine();
+                    SocketChannel sc = (SocketChannel) key.channel();
+                    buffer.clear();
+                    buffer.put(msg.getBytes());
+                    buffer.flip();
+                    sc.write(buffer);
+                }
+            }
+        }
+    }
+}
